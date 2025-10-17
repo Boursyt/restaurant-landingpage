@@ -1,21 +1,16 @@
 kind: pipeline
 name: hugo-website
 
-# This anchor is now less useful, but we'll keep it for this fix.
-hugo_env: &hugo_env
-   BASE_BUCKET_URL: $BUCKET_URL
-
 steps:
   - name: hugo-build
     image: peaceiris/hugo:v0.65.3-mod
     environment:
-      <<: *hugo_env
-      # This is the missing piece for the build step
+      # Use the HTTP website URL for building the site
       BUCKET_URL:
         from_secret: bucket_url
     commands:
-      # Now $BASE_BUCKET_URL (via $BUCKET_URL) will have the correct value
-      - hugo --baseURL $BASE_BUCKET_URL
+      # This command correctly uses the full website URL
+      - hugo --baseURL $BUCKET_URL
 
   - name: deploy-to-s3
     image: amazon/aws-cli
@@ -28,10 +23,11 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
-      BUCKET_URL:
-        from_secret: bucket_url
+
+      S3_URI:
+        from_secret: s3_uri
     commands:
-      - aws s3 sync ./public $BUCKET_URL --delete --exact-timestamps --acl public-read
+      - aws s3 sync ./public $S3_URI --delete --exact-timestamps --acl public-read
 
 trigger:
   branch:
