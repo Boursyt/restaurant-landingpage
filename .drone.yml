@@ -15,7 +15,7 @@ steps:
       BUCKET_URL:
         from_secret: bucket_url
     commands:
-      # This command correctly uses the full website URL
+      # This command correctly uses the full website URL.
       - hugo --baseURL $BUCKET_URL
     when:
       event:
