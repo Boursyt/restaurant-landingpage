@@ -103,7 +103,7 @@ steps:
       AWS_DEFAULT_REGION:
         from_secret: aws_region
       S3_URI_RELEASES:
-        from_secret: s3_uri_releases
+        from_secret: s3_uri_release
     commands:
       - yum install -y unzip
       - echo "Downloading release for commit ${DRONE_COMMIT_SHA:0:7}..."
@@ -154,7 +154,7 @@ steps:
       AWS_DEFAULT_REGION:
         from_secret: aws_region
       S3_URI_RELEASES:
-        from_secret: s3_uri_releases
+        from_secret: s3_uri_release
     commands:
       - yum install -y unzip
       - echo "Downloading release for commit ${DRONE_COMMIT_SHA:0:7}..."
