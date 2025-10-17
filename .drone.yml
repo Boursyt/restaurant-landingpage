@@ -25,7 +25,7 @@ steps:
     environment:
       <<: *hugo_env
     commands:
-      - aws s3 sync ./public s3://$BUCKET_NAME --delete --exact-timestamps --acl public-read
+      - aws s3 sync ./public $BUCKET_URL --delete --exact-timestamps --acl public-read
 
 trigger:
   branch:
