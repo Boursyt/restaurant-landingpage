@@ -11,7 +11,7 @@ steps:
   - name: hugo-build
     image: peaceiris/hugo:v0.65.3-mod
     environment:
-      # Use the HTTP website URL for building the site
+      # Use the HTTP website URL for building the site.
       BUCKET_URL:
         from_secret: bucket_url
     commands:
