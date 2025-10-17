@@ -1,27 +1,26 @@
+# 1. Pipeline de PREVIEW
+# Se déclenche sur un push vers n'importe quelle branche SAUF master.
+# Crée un déploiement éphémère pour la revue de code.
 kind: pipeline
-name: hugo-website
+name: preview
 
 trigger:
-  branch:
-    - master
   event:
     - push
+  branch:
+    exclude: # Ne pas exécuter pour la branche master
+      - master
 
 steps:
-  - name: hugo-build
+  - name: hugo-build-preview
     image: peaceiris/hugo:v0.65.3-mod
     environment:
-      # Use the HTTP website URL for building the site.
-      BUCKET_URL:
-        from_secret: bucket_url
+      # L'URL de base est unique pour chaque commit
+      BASE_URL: http://preview.example.com/resto/${DRONE_COMMIT_SHA:0:7}/
     commands:
-      # This command correctly uses the full website URL.
-      - hugo --baseURL $BUCKET_URL
-    when:
-      event:
-        - push      
+      - hugo --baseURL $BASE_URL
 
-  - name: deploy-to-s3
+  - name: deploy-to-s3-preview
     image: amazon/aws-cli
     environment:
       AWS_ACCESS_KEY_ID:
@@ -32,15 +31,109 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
-      S3_URI:
+      S3_URI_PREVIEW:
+        from_secret: s3_uri_preview
+    commands:
+      # Déploie dans un "dossier" S3 spécifique au commit
+      - aws s3 sync ./public $S3_URI_PREVIEW/resto/${DRONE_COMMIT_SHA:0:7} --delete
+
+---
+# 2. Pipeline de BUILD
+# Se déclenche sur chaque push vers master.
+# Son seul but est de valider que le site se construit correctement.
+# Un build réussi ici devient un "candidat" pour la promotion en staging.
+kind: pipeline
+name: build-master
+
+trigger:
+  event:
+    - push
+  branch:
+    - master
+
+steps:
+  - name: hugo-build-and-validate
+    image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BUCKET_STAGING_URL:
+        from_secret: bucket_url_staging
+    commands:
+      # On s'assure que le build ne génère pas d'erreur
+      - echo "Building for master branch to validate..."
+      - hugo --baseURL $BUCKET_STAGING_URL
+      - echo "Build successful. This commit can now be promoted to staging."
+
+---
+# 3. Pipeline de STAGING (par PROMOTION)
+# Se déclenche manuellement en promouvant un build de la branche master.
+kind: pipeline
+name: staging
+
+trigger:
+  event:
+    - promote
+  target:
+    - staging # Le nom de l'environnement de promotion
+
+steps:
+  - name: hugo-build-staging
+    image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BUCKET_STAGING_URL:
+        from_secret: bucket_url_staging
+    commands:
+      # Drone récupère le code source du commit que vous avez promu
+      - hugo --baseURL $BUCKET_STAGING_URL
+
+  - name: deploy-to-s3-staging
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_URI_STAGING:
+        from_secret: s3_uri_staging
+    commands:
+      - aws s3 sync ./public $S3_URI_STAGING --delete --exact-timestamps
+
+---
+# 4. Pipeline de PRODUCTION (par PROMOTION)
+# Se déclenche manuellement en promouvant un build (généralement celui qui est sur staging).
+kind: pipeline
+name: production
+
+trigger:
+  event:
+    - promote
+  target:
+    - production
+
+steps:
+  - name: hugo-build-production
+    image: peaceiris/hugo:v0.65.3-mod
+    environment:
+      BUCKET_PROD_URL:
+        from_secret: bucket_url
+    commands:
+      - hugo --baseURL $BUCKET_PROD_URL
+
+  - name: deploy-to-s3-production
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_URI_PROD:
         from_secret: s3_uri
     commands:
-      # Add this line to debug
-      - echo "Deploying to $S3_URI in region $AWS_DEFAULT_REGION"
-      - aws s3 sync ./public $S3_URI --delete --exact-timestamps
-    when:
-      event:
-        - push
-      branch:
-        - master
-
+      - aws s3 sync ./public $S3_URI_PROD --delete --exact-timestamps
