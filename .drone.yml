@@ -37,7 +37,7 @@ steps:
 ---
 # 2. Pipeline de BUILD ET ARCHIVAGE
 # Se déclenche sur chaque push vers master.
-# Construit le site PUIS archive le résultat comme "release" sur S3.
+# Construit le site PUIS archive le résultat comme "release" sur S3..
 kind: pipeline
 name: build-and-archive-master
 
