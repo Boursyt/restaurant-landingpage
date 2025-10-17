@@ -1,6 +1,7 @@
 kind: pipeline
 name: hugo-website
 
+# This anchor is now less useful, but we'll keep it for this fix.
 hugo_env: &hugo_env
    BASE_BUCKET_URL: $BUCKET_URL
 
@@ -9,16 +10,16 @@ steps:
     image: peaceiris/hugo:v0.65.3-mod
     environment:
       <<: *hugo_env
+      # This is the missing piece for the build step
+      BUCKET_URL:
+        from_secret: bucket_url
     commands:
-      - hugo --baseURL $BUCKET_URL
-
-  # The login step is no longer needed
+      # Now $BASE_BUCKET_URL (via $BUCKET_URL) will have the correct value
+      - hugo --baseURL $BASE_BUCKET_URL
 
   - name: deploy-to-s3
     image: amazon/aws-cli
     environment:
-      <<: *hugo_env
-      # AWS CLI will automatically use these standard environment variables
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
       AWS_SECRET_ACCESS_KEY:
