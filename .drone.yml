@@ -1,6 +1,12 @@
 kind: pipeline
 name: hugo-website
 
+trigger:
+  branch:
+    - master
+  event:
+    - push
+
 steps:
   - name: hugo-build
     image: peaceiris/hugo:v0.65.3-mod
@@ -11,6 +17,9 @@ steps:
     commands:
       # This command correctly uses the full website URL
       - hugo --baseURL $BUCKET_URL
+    when:
+      event:
+        - push      
 
   - name: deploy-to-s3
     image: amazon/aws-cli
@@ -29,9 +38,9 @@ steps:
       # Add this line to debug
       - echo "Deploying to $S3_URI in region $AWS_DEFAULT_REGION"
       - aws s3 sync ./public $S3_URI --delete --exact-timestamps
+    when:
+      event:
+        - push
+      branch:
+        - master
 
-trigger:
-  branch:
-    - master
-  event:
-    - push
