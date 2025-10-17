@@ -1,4 +1,3 @@
----
 hugo_env: &hugo_env
    BASE_BUCKET_URL: $BUCKET_URL
 
