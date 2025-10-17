@@ -1,8 +1,9 @@
+kind: pipeline
+name: hugo-website
+
 hugo_env: &hugo_env
    BASE_BUCKET_URL: $BUCKET_URL
 
-kind: pipeline
-name: hugo-website
 steps:
   - name: hugo-build
     image: peaceiris/hugo:v0.65.3-mod
@@ -11,18 +12,21 @@ steps:
     commands:
       - hugo --baseURL $BASE_BUCKET_URL
 
-  - name: login-to-AWS
-    image: amazon/aws-cli
-    commands:
-      - aws configure set aws_access_key_id $aws_access_key_id
-      - aws configure set aws_secret_access_key $aws_secret_access_key
-      - aws configure set aws_session_token $aws_session_token
-      - aws configure set default.region $aws_region
+  # The login step is no longer needed
 
   - name: deploy-to-s3
     image: amazon/aws-cli
     environment:
       <<: *hugo_env
+      # AWS CLI will automatically use these standard environment variables
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
     commands:
       - aws s3 sync ./public $BUCKET_URL --delete --exact-timestamps --acl public-read
 
