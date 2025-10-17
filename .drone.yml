@@ -10,7 +10,7 @@ steps:
     environment:
       <<: *hugo_env
     commands:
-      - hugo --baseURL $BASE_BUCKET_URL
+      - hugo --baseURL $BUCKET_URL
 
   # The login step is no longer needed
 
