@@ -27,6 +27,8 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
+      BUCKET_URL:
+        from_secret: bucket_url
     commands:
       - aws s3 sync ./public $BUCKET_URL --delete --exact-timestamps --acl public-read
 
