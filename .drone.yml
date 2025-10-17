@@ -1,6 +1,5 @@
-# 1. Pipeline de PREVIEW
+# 1. Pipeline de PREVIEW (inchangé)
 # Se déclenche sur un push vers n'importe quelle branche SAUF master.
-# Crée un déploiement éphémère pour la revue de code.
 kind: pipeline
 name: preview
 
@@ -8,14 +7,13 @@ trigger:
   event:
     - push
   branch:
-    exclude: # Ne pas exécuter pour la branche master
+    exclude:
       - master
 
 steps:
   - name: hugo-build-preview
     image: peaceiris/hugo:v0.65.3-mod
     environment:
-      # L'URL de base est unique pour chaque commit
       BASE_URL: http://preview.example.com/resto/${DRONE_COMMIT_SHA:0:7}/
     commands:
       - hugo --baseURL $BASE_URL
@@ -34,16 +32,14 @@ steps:
       S3_URI_PREVIEW:
         from_secret: s3_uri_preview
     commands:
-      # Déploie dans un "dossier" S3 spécifique au commit
       - aws s3 sync ./public $S3_URI_PREVIEW/resto/${DRONE_COMMIT_SHA:0:7} --delete
 
 ---
-# 2. Pipeline de BUILD
+# 2. Pipeline de BUILD ET ARCHIVAGE
 # Se déclenche sur chaque push vers master.
-# Son seul but est de valider que le site se construit correctement.
-# Un build réussi ici devient un "candidat" pour la promotion en staging.
+# Construit le site PUIS archive le résultat comme "release" sur S3.
 kind: pipeline
-name: build-master
+name: build-and-archive-master
 
 trigger:
   event:
@@ -52,41 +48,73 @@ trigger:
     - master
 
 steps:
-  - name: hugo-build-and-validate
+  - name: hugo-build
     image: peaceiris/hugo:v0.65.3-mod
     environment:
-      BUCKET_STAGING_URL:
-        from_secret: bucket_url_staging
+      # On build avec une URL générique, car cet artefact sera utilisé partout
+      BUCKET_PROD_URL:
+        from_secret: bucket_url
     commands:
-      # On s'assure que le build ne génère pas d'erreur
-      - echo "Building for master branch to validate..."
-      - hugo --baseURL $BUCKET_STAGING_URL
-      - echo "Build successful. This commit can now be promoted to staging."
+      - hugo --baseURL $BUCKET_PROD_URL
+
+  - name: archive-and-upload-release
+    image: amazon/aws-cli
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_URI_RELEASES: # NOUVEAU SECRET pour le bucket des artefacts
+        from_secret: s3_uri_release
+    commands:
+      # L'image amazon/aws-cli ne contient pas zip par défaut, on l'installe
+      - yum install -y zip
+      - echo "Archiving ./public directory..."
+      - zip -r release.zip ./public
+      - echo "Uploading release artifact to S3..."
+      - aws s3 cp release.zip $S3_URI_RELEASES/resto/${DRONE_COMMIT_SHA:0:7}.zip
 
 ---
-# 3. Pipeline de STAGING (par PROMOTION)
-# Se déclenche manuellement en promouvant un build de la branche master.
+# 3. Pipeline de STAGING (par PROMOTION depuis S3)
+# Récupère l'artefact depuis S3 et le déploie.
 kind: pipeline
-name: staging
+name: deploy-staging
 
 trigger:
   event:
     - promote
   target:
-    - staging # Le nom de l'environnement de promotion
+    - staging
 
 steps:
-  - name: hugo-build-staging
-    image: peaceiris/hugo:v0.65.3-mod
+  - name: download-release-artifact
+    image: amazon/aws-cli
     environment:
-      BUCKET_STAGING_URL:
-        from_secret: bucket_url_staging
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_URI_RELEASES:
+        from_secret: s3_uri_releases
     commands:
-      # Drone récupère le code source du commit que vous avez promu
-      - hugo --baseURL $BUCKET_STAGING_URL
+      - yum install -y unzip
+      - echo "Downloading release for commit ${DRONE_COMMIT_SHA:0:7}..."
+      - aws s3 cp $S3_URI_RELEASES/resto/${DRONE_COMMIT_SHA:0:7}.zip release.zip
+      - echo "Unzipping artifact..."
+      - unzip release.zip
 
   - name: deploy-to-s3-staging
     image: amazon/aws-cli
+    depends_on: # S'assure que le téléchargement est terminé avant de se lancer
+      - download-release-artifact
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
@@ -102,10 +130,10 @@ steps:
       - aws s3 sync ./public $S3_URI_STAGING --delete --exact-timestamps
 
 ---
-# 4. Pipeline de PRODUCTION (par PROMOTION)
-# Se déclenche manuellement en promouvant un build (généralement celui qui est sur staging).
+# 4. Pipeline de PRODUCTION (par PROMOTION depuis S3)
+# Récupère le MÊME artefact depuis S3 et le déploie.
 kind: pipeline
-name: production
+name: deploy-production
 
 trigger:
   event:
@@ -114,16 +142,30 @@ trigger:
     - production
 
 steps:
-  - name: hugo-build-production
-    image: peaceiris/hugo:v0.65.3-mod
+  - name: download-release-artifact
+    image: amazon/aws-cli
     environment:
-      BUCKET_PROD_URL:
-        from_secret: bucket_url
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      AWS_DEFAULT_REGION:
+        from_secret: aws_region
+      S3_URI_RELEASES:
+        from_secret: s3_uri_releases
     commands:
-      - hugo --baseURL $BUCKET_PROD_URL
+      - yum install -y unzip
+      - echo "Downloading release for commit ${DRONE_COMMIT_SHA:0:7}..."
+      - aws s3 cp $S3_URI_RELEASES/resto/${DRONE_COMMIT_SHA:0:7}.zip release.zip
+      - echo "Unzipping artifact..."
+      - unzip release.zip
 
   - name: deploy-to-s3-production
     image: amazon/aws-cli
+    depends_on:
+      - download-release-artifact
     environment:
       AWS_ACCESS_KEY_ID:
         from_secret: aws_access_key_id
