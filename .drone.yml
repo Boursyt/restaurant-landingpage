@@ -28,7 +28,7 @@ steps:
     commands:
       # Add this line to debug
       - echo "Deploying to $S3_URI in region $AWS_DEFAULT_REGION"
-      - aws s3 sync ./public $S3_URI --delete --exact-timestamps --acl public-read
+      - aws s3 sync ./public $S3_URI --delete --exact-timestamps
 
 trigger:
   branch:
