@@ -23,10 +23,11 @@ steps:
         from_secret: aws_session_token
       AWS_DEFAULT_REGION:
         from_secret: aws_region
-
       S3_URI:
         from_secret: s3_uri
     commands:
+      # Add this line to debug
+      - echo "Deploying to $S3_URI in region $AWS_DEFAULT_REGION"
       - aws s3 sync ./public $S3_URI --delete --exact-timestamps --acl public-read
 
 trigger:
